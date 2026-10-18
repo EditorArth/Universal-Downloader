@@ -1,0 +1,74 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Build Windows executable
+        shell: pwsh
+        run: |
+          $args = @(
+            '--noconfirm',
+            '--clean',
+            '--windowed',
+            '--name', 'UniversalDownloader',
+            '--collect-all', 'yt_dlp',
+            '--collect-all', 'PySide6'
+          )
+          if (Test-Path 'universal_downloader_logo.ico') {
+            $args += @('--icon', 'universal_downloader_logo.ico')
+            $args += @('--add-data', 'universal_downloader_logo.ico;.')
+          }
+          if (Test-Path 'universal_downloader_logo.png') {
+            $args += @('--add-data', 'universal_downloader_logo.png;.')
+          }
+          $args += @('universal_downloader.py')
+          python -m PyInstaller @args
+
+      - name: Include release notes
+        shell: pwsh
+        run: |
+          @'
+          Universal Downloader for Windows
+
+          Run UniversalDownloader.exe. If a site or media conversion requires FFmpeg,
+          install FFmpeg and make ffmpeg.exe and ffprobe.exe available on PATH.
+          '@ | Set-Content -Encoding utf8 dist/README.txt
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UniversalDownloader-Windows
+          path: dist/
+          if-no-files-found: error
+
+      - name: Attach executable to GitHub Release when triggered by a version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/UniversalDownloader.exe
+          generate_release_notes: true
